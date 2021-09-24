@@ -126,23 +126,36 @@ func main() {
 			continue
 		}
 
-		// payload is a []byte effectively (really a json.RawMessage):
+		// `payload` is a []byte of raw JSON:
 		payload := kafkaCatMessage["payload"]
+		if len(payload) >= 1 && payload[0] == '"' {
+			// if it's a JSON string, decode the JSON string:
+			var payloadStr string
+			err = json.Unmarshal(payload, &payloadStr)
+			if err != nil {
+				log.Println(fmt.Errorf("json unmarshal 'payload' as string: %w", err))
+				continue
+			}
+			payload = []byte(payloadStr)
+		}
 
 		var out_partition int32
 		var out_offset int64
-		out_partition, out_offset, err = prod.SendMessage(&sarama.ProducerMessage{
+		msg := &sarama.ProducerMessage{
 			Topic:     topic,
 			Key:       sarama.ByteEncoder(key),
 			Value:     sarama.ByteEncoder(payload),
 			Headers:   headers,
 			Partition: int32(partition),
 			Timestamp: time.Now(),
-		})
+		}
+		out_partition, out_offset, err = prod.SendMessage(msg)
 		if err != nil {
+			log.Println(err)
 			break
 		}
 		_, _ = out_partition, out_offset
+		log.Printf("[%s][%3d][%7d] wrote key='%s'\n", topic, out_partition, out_offset, key)
 	}
 
 	log.Println("Initiating shutdown of producer...")
